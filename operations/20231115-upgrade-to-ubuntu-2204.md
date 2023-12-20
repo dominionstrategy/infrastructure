@@ -217,6 +217,23 @@ Query OK, 0 rows affected (0.00 sec)
 <https://www.mediawiki.org/wiki/Manual:Installing_MediaWiki#MariaDB/MySQL>
 documents the required permissioning setup for MediaWiki.
 
+We follow the same steps to get a forum database and application user.
+The old server had the server using root, so we fix that now:
+
+```
+mysql> CREATE DATABASE smf;
+Query OK, 1 row affected (0.00 sec)
+
+mysql> CREATE USER 'smfuser'@'localhost' IDENTIFIED BY 'somerandomstring';
+Query OK, 0 rows affected (0.08 sec)
+
+mysql> GRANT ALL PRIVILEGES ON smf.* TO 'smfuser'@'localhost' WITH GRANT OPTION;
+Query OK, 0 rows affected (0.00 sec)
+```
+
+Documentation on the required permissions for the SMF user:
+<https://wiki.simplemachines.org/smf/Installing>
+
 ### MediaWiki setup
 
 Install MediaWiki, the welcome page should then be accessible on port
@@ -365,10 +382,40 @@ Install SimpleMachineForum (SMF):
 ```
 % sudo mkdir /var/local/smf
 % cd /var/local/smf
-% sudo wget https://download.simplemachines.org/index.php/smf_2-1-4_install.tar.gz -O smf.tar.gz
-% sudo tar -xf smf.tar.gz
-% sudo rm smf.tar.gz
+% sudo wget 'https://download.simplemachines.org/index.php?thanks;filename=smf_2-0-13_install.tar.gz' https://download.simplemachines.org/index.php/smf_2-0-13_install.tar.gz
+% sudo rm index*
+% sudo mv smf* smf-old.tar.gz
+% sudo wget https://download.simplemachines.org/index.php/smf_2-1-4_upgrade.tar.gz -O smf-new.tar.gz
+% sudo tar -xf smf-old.tar.gz
+% sudo tar -xf smf-new.tar.gz
+% sudo rm smf*.tar.gz
+% sudo chown -R --from=500:500 www-data:www-data .
+% sudo chown -R --from=1001:1003 www-data:www-data .
 ```
+
+Note that the way SMF upgrades work, is they expect you to upgrade in
+place, by extracting the "upgrade" package on top of the existing
+installation. To achieve a blue-green cutover, we instead create a
+fresh installation of the old version, copy over specific desired user
+data, and upgrade that.
+
+Also note that the reason for the bizarre first wget command is that
+if you try to download the tar-ball directly, then the genius
+sysadmins in charge of this website will serve you a 403 that says:
+
+```
+Sorry but you can not directly download an archived file without first going through the Simple Machines website.%
+```
+
+You have to visit the "thanks" page to get a `PHPSESSID` cookie set,
+which enables the download. Real great file server you are running
+there, folks. Super convenient. I'm sure this has not broken anybody's
+packaging scripts or deployment pipelines.
+
+Luckily wget has a built-in functionality of retaining session cookies
+when processing multiple URLs in the same command line. Unluckily
+there is no way to use `-O` with multiple files (why...?), see
+<https://superuser.com/a/336672>, so we have to do the rename dance.
 
 ## Critical window: migrate wiki
 
@@ -461,6 +508,75 @@ php update.php
 
 The update takes around 5-10 minutes in my testing.
 
+## Critical window: migrate forum
+
+This section covers restoring the db over to the new server. We have
+to put the old forum into read-only mode, copy it over, and update the
+DNS records.
+
+FIXME: put into read-only mode
+
+The forum database is small enough that we can hold the entire dump on
+disk at once, so we don't need to do complex streaming shenanigans
+like with the wiki.
+
+Connect to the old server:
+
+```
+% ssh -oHostKeyAlgorithms=+ssh-dss youraccount@oldmachine-ip
+```
+
+Create a mysqldump, this took about 45 seconds in my testing:
+
+```
+% mysqldump -u root -p smf --single-transaction --quick --lock-tables=false --disable-keys --extended-insert --no-autocommit > /tmp/forum.sql
+```
+
+Copy it over from the new machine, this took about a minute to
+transfer 1.7GB in my testing:
+
+```
+% scp -oHostKeyAlgorithms=+ssh-dss youraccount@oldmachine-ip:/tmp/forum.sql /tmp/forum.sql
+```
+
+Then on the old machine, delete it to avoid wasting space:
+
+```
+% rm /tmp/forum.sql
+```
+
+Now restore the dump into the database that you already created, this
+took a little over 5 minutes when I tried:
+
+```
+% mysql -u root -p smf < /tmp/forum.sql
+% rm /tmp/forum.sql
+```
+
+We also have to copy over settings and user files from the old server.
+We'll copy everything to start with (less than 1GB, takes under a
+minute to copy in my testing), and then selectively extract. From the
+old server:
+
+```
+% mkdir /tmp/forum
+% ssh -oHostKeyAlgorithms=+ssh-dss youraccount@oldmachine-ip tar -C /var/www/dominionstrategy.com/forum -czf - . | tar -C /tmp/forum -xzf -
+```
+
+And, copy over the requisite files:
+
+```
+% sudo cp /tmp/forum/Settings.php /var/local/smf/
+```
+
+FIXME more...
+
+Now we can upgrade the database. From `/var/local/smf`:
+
+```
+php upgrade.php
+```
+
 ## Troubleshooting info
 
 Try this in `LocalSettings.php`:
@@ -478,3 +594,11 @@ Without that, you just get an empty / truncated response in the
 browser when there is an error, and the logs go nowhere because
 apparently PHP doesn't have a real concept of server side error
 logging because of course not.
+
+## FIXMEs
+
+* Forum todo...
+* Forum needs to be put into read-only mode (or a banner added at
+  least)
+* Need to figure out TLS cutover
+* DNS settings
