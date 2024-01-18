@@ -11,7 +11,7 @@ incorporating the following software upgrades:
 | MediaWiki | 1.19.2      | 1.35.6      | 2012-08-30       | 2022-03-31       |
 | MySQL     | 5.1.63      | 8.0.35      | 2012-05-07       | 2023-10-25       |
 | PHP       | 5.3.2       | 8.1.2       | 2010-03-04       | 2022-01-20       |
-| SMF       | 2.0.13      | 2.1.4       | 2017-01-04       | 2023-06-10       |
+| SMF       | 2.0.13      | 2.0.19      | 2017-01-04       | 2021-12-21       |
 
 ## Initial setup
 
@@ -21,9 +21,18 @@ First, I provisioned a new Linode server using the following settings
 to match the existing server:
 
 * Image: Ubuntu 22.04 LTS
-* Region: Amsterdam, NL (nl-ams)
+* Region: Newark, NJ (us-east)
 * Plan: Dedicated 4 GB ($36/mo, 4GB RAM, 2 CPUs, 80GB storage, 4TB
   transfer, 40Gbps/4Gbps bandwidth in/out)
+
+I put the new server in the same region as the old server, because
+sometimes when copying files between two Linode instances, I would get
+bandwidth around 200KB/s rather than the expected 20MB/s, making file
+transfers effectively impossible. I'm not sure why this was happening.
+I filed a support ticket with Linode and they advised this could help.
+It was definitely an issue on their end, though - transfers in and out
+of both machines to residential internet were significantly slower
+than directly between them.
 
 ### Account setup
 
@@ -36,14 +45,24 @@ Connected via SSH and created an admin user to use instead of root:
 
 Logged in as admin user and did all following work from there. Copied
 my ssh public key to `~/.ssh/authorized_keys` for subsequent access.
-System upgrade:
+Edit `PermitRootLogin yes` to `PermitRootLogin no` and
+`PasswordAuthentication yes` to `PasswordAuthentication no` in
+`/etc/ssh/sshd_config`. System upgrade:
 
 ```
 % sudo apt update
 % sudo apt dist-upgrade
 ```
 
+Reboot. Just to get the new kernel and daemons, etc.
+
 ### Apache setup
+
+Install Apache:
+
+```
+% sudo apt install apache2
+```
 
 Disable the default Apache site:
 
@@ -52,16 +71,24 @@ Disable the default Apache site:
 ```
 
 Create a site configuration for the forum at
-`/etc/apache2/sites-enabled/forum.conf`:
+`/etc/apache2/sites-available/forum.conf`, the directory selector is
+necessary as Apache by default does not allow access outside of
+certain allowlisted directories:
 
 ```
 <VirtualHost *>
     DocumentRoot /var/local/smf
     ServerName forum.dominion.intuitiveexplanations.com
+
+    <Directory /var/local/smf/>
+        Options Indexes FollowSymLinks
+        AllowOverride None
+        Require all granted
+    </Directory>
 </VirtualHost>
 ```
 
-And one for the wiki at `/etc/apache2/sites-enabled/wiki.conf`, the
+And one for the wiki at `/etc/apache2/sites-available/wiki.conf`, the
 directory selector is to disable RCE via the uploads folder, this
 snippet is recommended by MediaWiki:
 
@@ -93,6 +120,13 @@ in the wiki site config to work:
 % sudo ln -s ../mods-available/headers.load /etc/apache2/mods-enabled/
 ```
 
+And install PHP early so that the `php_admin_flag` directive does not
+crash Apache:
+
+```
+% sudo apt install php
+```
+
 Enable the sites and restart Apache:
 
 ```
@@ -120,11 +154,11 @@ the `php_fastcgi` directive but couldn't get it to work, it would
 always return a 502 error:
 
 ```
-https://forum.dominion.intuitiveexplanations.com:443 {
+https://forum.dominion.radian.codes:443 {
     reverse_proxy 127.0.0.1:8080
 }
 
-https://wiki.dominion.intuitiveexplanations.com:443 {
+https://wiki.dominion.radian.codes:443 {
     reverse_proxy 127.0.0.1:8080
 }
 ```
@@ -139,6 +173,12 @@ rate limits. Then restart Caddy:
 ```
 
 ### Database setup
+
+Install MySQL (actually MariaDB):
+
+```
+% sudo apt install mysql-server
+```
 
 The database is running very close to maximum capacity on the original
 machine and it seems when copying over a mysqldump to the new machine
@@ -257,7 +297,7 @@ Update the following things in the local settings file after copying:
   `dswikiuser`.
 * `$wgSecretKey` - rotate just for best practices. Try `head -c32
   /dev/urandom | xxd -p | tr -d '\n'` to get a good value.
-* `$wgUpgradeKey` - generate a new random value, and set.
+* `$wgUpgradeKey` - generate a new random value (`head -c8`), and set.
 * `$wgServer` - if testing on a different hostname, then replace
   `http://wiki.dominionstrategy.com` and
   `https://wiki.dominionstrategy.com` with the appropriate values.
@@ -385,12 +425,11 @@ Install SimpleMachineForum (SMF):
 % sudo wget 'https://download.simplemachines.org/index.php?thanks;filename=smf_2-0-13_install.tar.gz' https://download.simplemachines.org/index.php/smf_2-0-13_install.tar.gz
 % sudo rm index*
 % sudo mv smf* smf-old.tar.gz
-% sudo wget https://download.simplemachines.org/index.php/smf_2-1-4_upgrade.tar.gz -O smf-new.tar.gz
+% sudo wget https://download.simplemachines.org/index.php/smf_2-0-19_upgrade.tar.gz -O smf-new.tar.gz
 % sudo tar -xf smf-old.tar.gz
 % sudo tar -xf smf-new.tar.gz
 % sudo rm smf*.tar.gz
-% sudo chown -R --from=500:500 www-data:www-data .
-% sudo chown -R --from=1001:1003 www-data:www-data .
+% sudo chown -R www-data:www-data .
 ```
 
 Note that the way SMF upgrades work, is they expect you to upgrade in
@@ -416,6 +455,59 @@ Luckily wget has a built-in functionality of retaining session cookies
 when processing multiple URLs in the same command line. Unluckily
 there is no way to use `-O` with multiple files (why...?), see
 <https://superuser.com/a/336672>, so we have to do the rename dance.
+
+In principle the tarballs have some files set to user ownership and
+others to root ownership, but in practice the PHP code needs write
+access to everything (yes, even things like `Settings.php`). So,
+that's why we have the indiscriminate `chown`.
+
+Update the following things in `/var/local/smf/Settings.php` file to
+make it match the old server (with some adaptations; and make sure to
+`sudo -u www-data -g www-data` to match permissions):
+
+* `$mbname` - change from `My Community` to `Dominion Strategy Forum`.
+* `$boardurl` - change from `http://127.0.0.1/smf` to
+  `https://forum.dominionstrategy.com` (or equivalent if testing on a
+  different hostname).
+* `$webmaster_email` - change from `noreply@myserver.com` to
+  `DO_NOT_REPLY@forum.dominionstrategy.com`.
+* `$db_user` - change from `root` to `smfuser`.
+* `$db_passwd` - update to the password previously generated for
+  `smfuser`.
+* `$db_error_send` - change from `1` to `0`.
+
+Add the following code at the end of the forum info section, for
+compatibility with the proxy:
+
+```
+if ($_SERVER['REMOTE_ADDR'] == '127.0.0.1' && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+    $_SERVER['REMOTE_ADDR'] = $_SERVER['HTTP_X_FORWARDED_FOR'];
+    $_SERVER['HTTP_X_FORWARDED_FOR'] = '';
+}
+```
+
+And at the end of the file just before the closing `?>` tag (generate
+an `$image_proxy_secret` with `head -c10 /dev/urandom | xxd -p`, and
+an `$auth_secret` with `head -c32 /dev/urandom | xxd -p | tr -d
+'\n'`):
+
+```
+$image_proxy_secret = 'randomstring';
+$image_proxy_maxsize = 5190;
+$image_proxy_enabled = 1;
+
+$auth_secret = 'randomstring';
+```
+
+(FIXME: going to skip the secret generation, will see if that works.)
+
+Get rid of the `install*` files because they will block upgrades from
+happening. The "installation" will happen by restoring the database
+from the old server.
+
+```
+% sudo rm /var/local/smf/install*
+```
 
 ## Critical window: migrate wiki
 
@@ -453,9 +545,13 @@ credentials, which means we have to use a reverse tunnel. Run these
 two commands in parallel from the new machine:
 
 ```
-% ssh -R 127.0.0.1:2222:127.0.0.1:22 -oHostKeyAlgorithms=+ssh-dss youraccount@oldmachine-ip
+% ssh -R localhost:8888:localhost:8888 -oHostKeyAlgorithms=+ssh-dss youraccount@oldmachine-ip
 % nc -l localhost 8888 -q0 | gunzip | mysql -u root -p dswiki
 ```
+
+(Note: for some reason I don't fully understand, forwarding
+`localhost` instead of `127.0.0.1` is critical, the reverse
+connections will be refused otherwise.)
 
 Then in the SSH session on the old machine:
 
@@ -468,6 +564,11 @@ minutes to fully dump and restore when using the options above. It
 might be possible to make things go faster with some tuning, but this
 should be acceptable I think.
 
+(Also note: for some reason when I ran this the first time, it filled
+up the disk with binary log files, even though I had disabled the
+binary log. I do not know how this happened. Keep an eye out during
+the migration because cleaning up a full disk from MySQL is not fun.)
+
 We also want to copy over the image files, this is documented as a
 separate step in the MediaWiki upgrade guide. The image copying can be
 done in parallel with the database restore. Just `scp` isn't
@@ -478,15 +579,17 @@ well optimized for that. Using `tar` speeds it up considerably.
 % sudo -u www-data -g www-data bash -c "ssh -oHostKeyAlgorithms=+ssh-dss -oUserKnownHostsFile=/dev/null youraccount@oldmachine-ip tar -C /var/www/mediawiki/images -czf - . | tar -C /var/lib/mediawiki/images --skip-old-files -xzf -"
 ```
 
-With this command, copying 46,500 images comprising 3.6GB took 2m30s.
+(Note: setting `UserKnownHostsFile` because the home directory gets
+set to `/var/www` when running as `www-data`.) With this command,
+copying 46,500 images comprising 3.6GB took 2m30s.
 
 Once the database and other files are copied over we can set up
 MediaWiki and it should be able to detect the existing database and
-upgrade it. Go to <https://wiki.dominion.intuitiveexplanations.com/>
-and there should be a prompt to set up the wiki interactively through
-the web interface. Again it might be smart to do this with a port
-forward without exposing Apache outside localhost, but it's probably
-not a huge deal.
+upgrade it. Go to <https://wiki.dominion.radian.codes/> and there
+should be a prompt to set up the wiki interactively through the web
+interface. Again it might be smart to do this with a port forward
+without exposing Apache outside localhost, but it's probably not a
+huge deal.
 
 The environmental checks should all be passing based on the
 configuration we did earlier, so double check those if any are
@@ -514,7 +617,26 @@ This section covers restoring the db over to the new server. We have
 to put the old forum into read-only mode, copy it over, and update the
 DNS records.
 
-FIXME: put into read-only mode
+There's unfortunately not strictly speaking any read-only mode for the
+forum, you either have to take it down entirely or leave it in
+read/write. So, in `/var/www/dominionstrategy.com/forum/Settings.php`,
+set at the top:
+
+```
+$maintenance = '1';
+$mtitle = 'Maintenance Mode';
+$mmessage = 'We are upgrading the forum, please be patient. This forum will be back in a few hours. You can follow along on Discord in #wiki-general if you want.';
+```
+
+Might as well be safe and put the database in read-only mode too:
+
+```
+% mysql -u root -p -r <<< "SELECT TABLE_NAME FROM information_schema.tables WHERE TABLE_SCHEMA = 'smf'" | sed 's/.*/LOCK TABLE & READ;/' > lock_tables.sql
+% mysql -u root -p
+mysql> SOURCE lock_tables.sql;
+... perform migration while keeping session open ...
+mysql> UNLOCK TABLES;
+```
 
 The forum database is small enough that we can hold the entire dump on
 disk at once, so we don't need to do complex streaming shenanigans
@@ -533,7 +655,9 @@ Create a mysqldump, this took about 45 seconds in my testing:
 ```
 
 Copy it over from the new machine, this took about a minute to
-transfer 1.7GB in my testing:
+transfer 1.7GB in my testing (if network connection is slow for some
+reason you can `gzip` and `gunzip` on either end, but that will
+probably not save time in most circumstances):
 
 ```
 % scp -oHostKeyAlgorithms=+ssh-dss youraccount@oldmachine-ip:/tmp/forum.sql /tmp/forum.sql
@@ -556,30 +680,157 @@ took a little over 5 minutes when I tried:
 We also have to copy over settings and user files from the old server.
 We'll copy everything to start with (less than 1GB, takes under a
 minute to copy in my testing), and then selectively extract. From the
-old server:
+new server:
 
 ```
 % mkdir /tmp/forum
 % ssh -oHostKeyAlgorithms=+ssh-dss youraccount@oldmachine-ip tar -C /var/www/dominionstrategy.com/forum -czf - . | tar -C /tmp/forum -xzf -
+% sudo chown -R www-data:www-data /tmp/forum
 ```
 
 And, copy over the requisite files:
 
 ```
-% sudo cp /tmp/forum/Settings.php /var/local/smf/
+% sudo cp -pnR /tmp/forum/attachments/. /var/local/smf/attachments/
+% sudo cp -pnR /tmp/forum/avatars/. /var/local/smf/avatars/
+% sudo cp -pnR /tmp/forum/useravs/. /var/local/smf/useravs/
 ```
 
-FIXME more...
+We also have to adapt some things hardcoded in the database to the new
+root directory. We'll convert them to just use relative paths where
+possible:
+
+```
+% mysql -u root -p smf
+mysql> SELECT variable, value FROM smf_settings WHERE value LIKE '%dominionstrategy.com%' ORDER BY variable;
++---------------------+---------------------------------------------------------------------------+
+| variable            | value                                                                     |
++---------------------+---------------------------------------------------------------------------+
+| attachmentUploadDir | /var/www/dominionstrategy.com/forum/attachments                           |
+| avatar_directory    | /var/www/dominionstrategy.com/forum/avatars                               |
+| avatar_url          | http://forum.dominionstrategy.com/avatars                                 |
+| custom_avatar_dir   | /var/www/dominionstrategy.com/forum/useravs                               |
+| custom_avatar_url   | http://forum.dominionstrategy.com/useravs                                 |
+| news                | [b][url=http://wiki.dominionstrategy.com/]DominionStrategy Wiki[/url][/b] |
+| pretty_root_url     | http://forum.dominionstrategy.com                                         |
+| smileys_dir         | /var/www/dominionstrategy.com/forum/Smileys                               |
+| smileys_url         | http://forum.dominionstrategy.com/Smileys                                 |
++---------------------+---------------------------------------------------------------------------+
+9 rows in set (0.00 sec)
+
+mysql> UPDATE smf_settings SET value = REPLACE(value, '/var/www/dominionstrategy.com/forum/', '');
+Query OK, 4 rows affected (0.00 sec)
+Rows matched: 238  Changed: 4  Warnings: 0
+
+mysql> UPDATE smf_settings SET value = REPLACE(value, 'http://forum.dominionstrategy.com/', '/');
+Query OK, 3 rows affected (0.00 sec)
+Rows matched: 238  Changed: 3  Warnings: 0
+
+mysql> UPDATE smf_settings SET value = REPLACE(value, 'http://wiki.dominionstrategy.com/', 'https://wiki.dominionstrategy.com/') WHERE variable = 'news';
+Query OK, 1 row affected (0.00 sec)
+Rows matched: 1  Changed: 1  Warnings: 0
+
+mysql> UPDATE smf_settings SET value = 'https://forum.dominionstrategy.com' WHERE variable = 'pretty_root_url';
+Query OK, 1 row affected (0.00 sec)
+Rows matched: 1  Changed: 1  Warnings: 0
+```
+
+In the last `UPDATE` query, substitute an appropriate value if you are
+testing with another hostname.
+
+We also need to make similar fixes in the themes table:
+
+```
+mysql> SELECT * FROM smf_themes WHERE value LIKE '%dominionstrategy.com%';
++-----------+----------+-----------+----------------------------------------------------+
+| id_member | id_theme | variable  | value                                              |
++-----------+----------+-----------+----------------------------------------------------+
+|         0 |        1 | theme_dir | /var/www/dominionstrategy.com/forum/Themes/default |
+|         0 |        2 | theme_dir | /var/www/dominionstrategy.com/forum/Themes/core    |
++-----------+----------+-----------+----------------------------------------------------+
+2 rows in set (0.04 sec)
+
+mysql> UPDATE smf_themes SET value = REPLACE(value, '/var/www/dominionstrategy.com/forum/', '');
+Query OK, 2 rows affected (0.05 sec)
+Rows matched: 35794  Changed: 2  Warnings: 0
+```
 
 Now we can upgrade the database. From `/var/local/smf`:
 
 ```
-php upgrade.php
+% sudo php upgrade.php
 ```
+
+This takes a few minutes to run all the db migrations. Per request,
+after it finishes successfully:
+
+```
+% sudo rm /var/local/smf/upgrade*
+```
+
+Now we should be able to access the web interface of the new forum and
+complete setup. Login with an administrator account.
+
+First let's fix the theme. Navigate to Admin > Features and Options >
+Configuration > Theme Settings, find the Core Theme, and click the
+green check-mark icon to enable the theme. Then go to the Manage and
+Install tab, and reset the overall forum default from SMF Default
+Theme to Core Theme. Also disable ability for members to select their
+own themes, and remove all but the default from the selectable list,
+because there was only one option to choose from in the old forum
+anyway. Reset everyone to Forum Default. Now click Save. The overall
+appearance of the forum should be fixed.
+
+We also need to re-install packages that were present on the old
+server. From the old forum admin panel, here is the list:
+
+| Mod name                          | Version |
+|-----------------------------------|---------|
+| Admin Toolbox                     | 1.0     |
+| Dice Roller BBcode                | 1.3     |
+| SMF 1.1.19 / 2.0.6 Update         | 1.0     |
+| SMF 1.1.20 / 2.0.9 Update         | 1.0     |
+| SMF 1.1.21 / 2.0.10 Update        | 1.0     |
+| SMF 2.0.1 Update                  | 1.0     |
+| SMF 2.0.2 Update                  | 1.0     |
+| SMF 2.0.3 Update                  | 1.0     |
+| SMF 2.0.4 Update                  | 1.0     |
+| SMF 2.0.5 Update                  | 1.0     |
+| SMF 2.0.7 Update                  | 1.0     |
+| SMF 2.0.8 Update                  | 1.0     |
+| SMF 2.0.11 Update                 | 1.0     |
+| SMF 2.0.12 Update                 | 1.0     |
+| SMF 2.0.13 Update                 | 1.0     |
+| Show User Posts By Certain Boards | 1.1.2   |
+| Simple Youtube Video Embedder/BBC | 1.1     |
+| Single Category                   | 2.1.9   |
+| Stop Forum Spam                   | 1.0     |
+| Voter Visibility                  | 1.02    |
+
+Some of these still exist, some have been updated, some aren't around
+anymore, some are not needed. In the new forum admin panel, navigate
+to Admin > Main > Package Manager > Browse Packages, and install the
+following:
+
+* Admin Toolbox v1.0 <https://www.smfhacks.com/index.php?action=downloads;sa=view;id=190>
+* Dice Roller v1.3 <https://custom.simplemachines.org/index.php?mod=2032>
+* Ohara YouTube Embed v1.2.15 <https://custom.simplemachines.org/index.php?mod=3268>
+* Show User Posts By Certain Boards v1.1.3 <https://custom.simplemachines.org/index.php?mod=3240>
+* Stop Forum Spam v1.5.3 <https://custom.simplemachines.org/index.php?mod=4311>
+* View Single Category v2.9 <https://custom.simplemachines.org/index.php?mod=486>
+* Voter Visibility v2.1 <https://custom.simplemachines.org/index.php?mod=3373>
+
+Download all the mods and upload them to the admin panel under Add
+Packages. Then go to Browse Packages, and install each of the uploaded
+packages.
+
+FIXME redo the process with only patch version bump instead of minor
+
+FIXME misc other changes...
 
 ## Troubleshooting info
 
-Try this in `LocalSettings.php`:
+For MediaWiki debugging, try this in `LocalSettings.php`:
 
 ```
 // at beginning (after php block)
@@ -595,6 +846,22 @@ browser when there is an error, and the logs go nowhere because
 apparently PHP doesn't have a real concept of server side error
 logging because of course not.
 
+Apache logs errors to `/var/log/apache2/error.log`.
+
+To initiate scp operations from the old server, with its ancient ssh
+version, set this on the new server sshd config:
+
+```
+HostKeyAlgorithms +ssh-rsa,ssh-dss
+PasswordAuthentication yes
+```
+
+Restart sshd, then use from the old server:
+
+```
+% scp -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null admin@newmachine-ip:...
+```
+
 ## FIXMEs
 
 * Forum todo...
@@ -602,3 +869,5 @@ logging because of course not.
   least)
 * Need to figure out TLS cutover
 * DNS settings
+* SMTP support ticket
+  <https://www.linode.com/docs/guides/running-a-mail-server/>
