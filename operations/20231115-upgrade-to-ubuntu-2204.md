@@ -11,7 +11,21 @@ incorporating the following software upgrades:
 | MediaWiki | 1.19.2      | 1.35.6      | 2012-08-30       | 2022-03-31       |
 | MySQL     | 5.1.63      | 8.0.35      | 2012-05-07       | 2023-10-25       |
 | PHP       | 5.3.2       | 8.1.2       | 2010-03-04       | 2022-01-20       |
-| SMF       | 2.0.13      | 2.0.19      | 2017-01-04       | 2021-12-21       |
+| SMF       | 2.0.13      | 2.0.13      | 2017-01-04       | 2017-01-04       |
+
+SMF is kind of impossible to update without a huge amount of manual
+work, because none of the existing plugins in use are well-supported
+or even have versions available that are compatible with later patch
+versions in the 2.0.x series, much less the newer 2.1.x series that is
+officially recommended now that 2.0.x is end-of-life. And because the
+encouraged customization mechanism is "make edits to random files and
+remember which ones you touched in case they ever break". So, for now,
+leaving that alone.
+
+Realistically, the plugin needs of the forum need to be re-evaluated
+by someone familiar with the needs of the community, so that an
+appropriate path forward can be determined - the existing plugins just
+don't allow upgrading.
 
 ## Initial setup
 
@@ -771,18 +785,8 @@ after it finishes successfully:
 Now we should be able to access the web interface of the new forum and
 complete setup. Login with an administrator account.
 
-First let's fix the theme. Navigate to Admin > Features and Options >
-Configuration > Theme Settings, find the Core Theme, and click the
-green check-mark icon to enable the theme. Then go to the Manage and
-Install tab, and reset the overall forum default from SMF Default
-Theme to Core Theme. Also disable ability for members to select their
-own themes, and remove all but the default from the selectable list,
-because there was only one option to choose from in the old forum
-anyway. Reset everyone to Forum Default. Now click Save. The overall
-appearance of the forum should be fixed.
-
-We also need to re-install packages that were present on the old
-server. From the old forum admin panel, here is the list:
+We need to re-install packages that were present on the old server.
+From the old forum admin panel, here is the list:
 
 | Mod name                          | Version |
 |-----------------------------------|---------|
@@ -820,11 +824,10 @@ following:
 * View Single Category v2.9 <https://custom.simplemachines.org/index.php?mod=486>
 * Voter Visibility v2.1 <https://custom.simplemachines.org/index.php?mod=3373>
 
-Download all the mods and upload them to the admin panel under Add
-Packages. Then go to Browse Packages, and install each of the uploaded
-packages.
-
-FIXME redo the process with only patch version bump instead of minor
+Download all the mods and upload them to the admin panel (Admin > Main
+\> Package Manager > Download Packages > Upload a Package). Then go to
+Browse Packages, and install each of the uploaded packages. Enable all
+the checkboxes under "Install in Other Themes" where applicable.
 
 FIXME misc other changes...
 
