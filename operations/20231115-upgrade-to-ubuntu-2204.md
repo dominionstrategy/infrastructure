@@ -92,7 +92,7 @@ certain allowlisted directories:
 ```
 <VirtualHost *>
     DocumentRoot /var/local/smf
-    ServerName forum.dominion.intuitiveexplanations.com
+    ServerName forum.dominionstrategy.com
 
     <Directory /var/local/smf/>
         Options Indexes FollowSymLinks
@@ -109,7 +109,7 @@ snippet is recommended by MediaWiki:
 ```
 <VirtualHost *>
     DocumentRoot /var/lib/mediawiki
-    ServerName wiki.dominion.intuitiveexplanations.com
+    ServerName wiki.dominionstrategy.com
 
     <Directory /var/lib/mediawiki/images>
         AllowOverride None
@@ -119,6 +119,9 @@ snippet is recommended by MediaWiki:
     </Directory>
 </VirtualHost>
 ```
+
+(Make sure to update the `ServerName` directives if a different DNS
+entry will be used.)
 
 Put Apache on port 8080 because we will proxy through Caddy, edit
 `/etc/apache2/ports.conf` to:
@@ -431,97 +434,11 @@ probably obsolete and did not copy it over.
 
 ### SMF setup
 
-Install SimpleMachineForum (SMF):
-
-```
-% sudo mkdir /var/local/smf
-% cd /var/local/smf
-% sudo wget 'https://download.simplemachines.org/index.php?thanks;filename=smf_2-0-13_install.tar.gz' https://download.simplemachines.org/index.php/smf_2-0-13_install.tar.gz
-% sudo rm index*
-% sudo mv smf* smf-old.tar.gz
-% sudo wget https://download.simplemachines.org/index.php/smf_2-0-19_upgrade.tar.gz -O smf-new.tar.gz
-% sudo tar -xf smf-old.tar.gz
-% sudo tar -xf smf-new.tar.gz
-% sudo rm smf*.tar.gz
-% sudo chown -R www-data:www-data .
-```
-
-Note that the way SMF upgrades work, is they expect you to upgrade in
-place, by extracting the "upgrade" package on top of the existing
-installation. To achieve a blue-green cutover, we instead create a
-fresh installation of the old version, copy over specific desired user
-data, and upgrade that.
-
-Also note that the reason for the bizarre first wget command is that
-if you try to download the tar-ball directly, then the genius
-sysadmins in charge of this website will serve you a 403 that says:
-
-```
-Sorry but you can not directly download an archived file without first going through the Simple Machines website.%
-```
-
-You have to visit the "thanks" page to get a `PHPSESSID` cookie set,
-which enables the download. Real great file server you are running
-there, folks. Super convenient. I'm sure this has not broken anybody's
-packaging scripts or deployment pipelines.
-
-Luckily wget has a built-in functionality of retaining session cookies
-when processing multiple URLs in the same command line. Unluckily
-there is no way to use `-O` with multiple files (why...?), see
-<https://superuser.com/a/336672>, so we have to do the rename dance.
-
-In principle the tarballs have some files set to user ownership and
-others to root ownership, but in practice the PHP code needs write
-access to everything (yes, even things like `Settings.php`). So,
-that's why we have the indiscriminate `chown`.
-
-Update the following things in `/var/local/smf/Settings.php` file to
-make it match the old server (with some adaptations; and make sure to
-`sudo -u www-data -g www-data` to match permissions):
-
-* `$mbname` - change from `My Community` to `Dominion Strategy Forum`.
-* `$boardurl` - change from `http://127.0.0.1/smf` to
-  `https://forum.dominionstrategy.com` (or equivalent if testing on a
-  different hostname).
-* `$webmaster_email` - change from `noreply@myserver.com` to
-  `DO_NOT_REPLY@forum.dominionstrategy.com`.
-* `$db_user` - change from `root` to `smfuser`.
-* `$db_passwd` - update to the password previously generated for
-  `smfuser`.
-* `$db_error_send` - change from `1` to `0`.
-
-Add the following code at the end of the forum info section, for
-compatibility with the proxy:
-
-```
-if ($_SERVER['REMOTE_ADDR'] == '127.0.0.1' && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-    $_SERVER['REMOTE_ADDR'] = $_SERVER['HTTP_X_FORWARDED_FOR'];
-    $_SERVER['HTTP_X_FORWARDED_FOR'] = '';
-}
-```
-
-And at the end of the file just before the closing `?>` tag (generate
-an `$image_proxy_secret` with `head -c10 /dev/urandom | xxd -p`, and
-an `$auth_secret` with `head -c32 /dev/urandom | xxd -p | tr -d
-'\n'`):
-
-```
-$image_proxy_secret = 'randomstring';
-$image_proxy_maxsize = 5190;
-$image_proxy_enabled = 1;
-
-$auth_secret = 'randomstring';
-```
-
-(FIXME: going to skip the secret generation, will see if that works.)
-
-Get rid of the `install*` files because they will block upgrades from
-happening. The "installation" will happen by restoring the database
-from the old server.
-
-```
-% sudo rm /var/local/smf/install*
-```
+We will not install SMF ahead of time, but will rather copy it over
+during the critical window. This is because we are not upgrading SMF,
+and indeed such a thing does not really even exist for SMF, due to the
+bizarre package management system (if it can be called that) which is
+in use within the ecosystem.
 
 ## Critical window: migrate wiki
 
@@ -634,7 +551,7 @@ DNS records.
 There's unfortunately not strictly speaking any read-only mode for the
 forum, you either have to take it down entirely or leave it in
 read/write. So, in `/var/www/dominionstrategy.com/forum/Settings.php`,
-set at the top:
+set at the top (save the previous values for later):
 
 ```
 $maintenance = '1';
@@ -691,24 +608,25 @@ took a little over 5 minutes when I tried:
 % rm /tmp/forum.sql
 ```
 
-We also have to copy over settings and user files from the old server.
-We'll copy everything to start with (less than 1GB, takes under a
-minute to copy in my testing), and then selectively extract. From the
-new server:
+We also have to copy over the actual forum deployment (this includes
+code, settings, and user files). From the new server, the copy seems
+to take less than a minute:
 
 ```
-% mkdir /tmp/forum
-% ssh -oHostKeyAlgorithms=+ssh-dss youraccount@oldmachine-ip tar -C /var/www/dominionstrategy.com/forum -czf - . | tar -C /tmp/forum -xzf -
-% sudo chown -R www-data:www-data /tmp/forum
+% sudo mkdir /var/local/smf
+% ssh -oHostKeyAlgorithms=+ssh-dss youraccount@oldmachine-ip tar -C /var/www/dominionstrategy.com/forum -czf - . | sudo tar -C /var/local/smf -xzf -
+% sudo chown -R www-data:www-data /var/local/smf
 ```
 
-And, copy over the requisite files:
+Update the following things in `/var/local/smf/Settings.php` file to
+make it match the new server (with some adaptations; and make sure to
+`sudo -u www-data -g www-data` to match permissions):
 
-```
-% sudo cp -pnR /tmp/forum/attachments/. /var/local/smf/attachments/
-% sudo cp -pnR /tmp/forum/avatars/. /var/local/smf/avatars/
-% sudo cp -pnR /tmp/forum/useravs/. /var/local/smf/useravs/
-```
+* Undo the maintenance window changes at the top from the old server.
+* `$db_user` - change from `root` to `smfuser`.
+* `$db_passwd` - update to the password previously generated for
+  `smfuser`.
+* `$boardurl` - change if using a different hostname.
 
 We also have to adapt some things hardcoded in the database to the new
 root directory. We'll convert them to just use relative paths where
@@ -769,67 +687,13 @@ Query OK, 2 rows affected (0.05 sec)
 Rows matched: 35794  Changed: 2  Warnings: 0
 ```
 
-Now we can upgrade the database. From `/var/local/smf`:
+Also get rid of autosave files that are a security vulnerability:
 
 ```
-% sudo php upgrade.php
+% sudo rm /var/local/smf/**/*~
 ```
 
-This takes a few minutes to run all the db migrations. Per request,
-after it finishes successfully:
-
-```
-% sudo rm /var/local/smf/upgrade*
-```
-
-Now we should be able to access the web interface of the new forum and
-complete setup. Login with an administrator account.
-
-We need to re-install packages that were present on the old server.
-From the old forum admin panel, here is the list:
-
-| Mod name                          | Version |
-|-----------------------------------|---------|
-| Admin Toolbox                     | 1.0     |
-| Dice Roller BBcode                | 1.3     |
-| SMF 1.1.19 / 2.0.6 Update         | 1.0     |
-| SMF 1.1.20 / 2.0.9 Update         | 1.0     |
-| SMF 1.1.21 / 2.0.10 Update        | 1.0     |
-| SMF 2.0.1 Update                  | 1.0     |
-| SMF 2.0.2 Update                  | 1.0     |
-| SMF 2.0.3 Update                  | 1.0     |
-| SMF 2.0.4 Update                  | 1.0     |
-| SMF 2.0.5 Update                  | 1.0     |
-| SMF 2.0.7 Update                  | 1.0     |
-| SMF 2.0.8 Update                  | 1.0     |
-| SMF 2.0.11 Update                 | 1.0     |
-| SMF 2.0.12 Update                 | 1.0     |
-| SMF 2.0.13 Update                 | 1.0     |
-| Show User Posts By Certain Boards | 1.1.2   |
-| Simple Youtube Video Embedder/BBC | 1.1     |
-| Single Category                   | 2.1.9   |
-| Stop Forum Spam                   | 1.0     |
-| Voter Visibility                  | 1.02    |
-
-Some of these still exist, some have been updated, some aren't around
-anymore, some are not needed. In the new forum admin panel, navigate
-to Admin > Main > Package Manager > Browse Packages, and install the
-following:
-
-* Admin Toolbox v1.0 <https://www.smfhacks.com/index.php?action=downloads;sa=view;id=190>
-* Dice Roller v1.3 <https://custom.simplemachines.org/index.php?mod=2032>
-* Ohara YouTube Embed v1.2.15 <https://custom.simplemachines.org/index.php?mod=3268>
-* Show User Posts By Certain Boards v1.1.3 <https://custom.simplemachines.org/index.php?mod=3240>
-* Stop Forum Spam v1.5.3 <https://custom.simplemachines.org/index.php?mod=4311>
-* View Single Category v2.9 <https://custom.simplemachines.org/index.php?mod=486>
-* Voter Visibility v2.1 <https://custom.simplemachines.org/index.php?mod=3373>
-
-Download all the mods and upload them to the admin panel (Admin > Main
-\> Package Manager > Download Packages > Upload a Package). Then go to
-Browse Packages, and install each of the uploaded packages. Enable all
-the checkboxes under "Install in Other Themes" where applicable.
-
-FIXME misc other changes...
+Now the forum should be up and running.
 
 ## Troubleshooting info
 
