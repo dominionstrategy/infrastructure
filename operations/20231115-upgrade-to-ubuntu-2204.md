@@ -11,21 +11,7 @@ incorporating the following software upgrades:
 | MediaWiki | 1.19.2      | 1.35.6      | 2012-08-30       | 2022-03-31       |
 | MySQL     | 5.1.63      | 8.0.35      | 2012-05-07       | 2023-10-25       |
 | PHP       | 5.3.2       | 8.1.2       | 2010-03-04       | 2022-01-20       |
-| SMF       | 2.0.13      | 2.0.13      | 2017-01-04       | 2017-01-04       |
-
-SMF is kind of impossible to update without a huge amount of manual
-work, because none of the existing plugins in use are well-supported
-or even have versions available that are compatible with later patch
-versions in the 2.0.x series, much less the newer 2.1.x series that is
-officially recommended now that 2.0.x is end-of-life. And because the
-encouraged customization mechanism is "make edits to random files and
-remember which ones you touched in case they ever break". So, for now,
-leaving that alone.
-
-Realistically, the plugin needs of the forum need to be re-evaluated
-by someone familiar with the needs of the community, so that an
-appropriate path forward can be determined - the existing plugins just
-don't allow upgrading.
+| SMF       | 2.0.13      | 2.0.19      | 2017-01-04       | 2021-12-21       |
 
 ## Initial setup
 
@@ -440,10 +426,14 @@ probably obsolete and did not copy it over.
 ### SMF setup
 
 We will not install SMF ahead of time, but will rather copy it over
-during the critical window. This is because we are not upgrading SMF,
-and indeed such a thing does not really even exist for SMF, due to the
-bizarre package management system (if it can be called that) which is
-in use within the ecosystem.
+during the critical window and upgrade it by applying a gigantic Git
+patch in place. Yes, really. This is because SMF doesn't really
+support upgrades except in very specific cases, and even those barely
+work, unless you're willing to lose data. And because most of the
+plugins in use on the forum are not able to be installed even on a
+more recent patch version of SMF, much less the latest minor version,
+due to no longer being maintained. So I had to do a lot of manual
+work.
 
 ## Critical window: migrate wiki
 
@@ -714,10 +704,21 @@ Query OK, 2 rows affected (0.05 sec)
 Rows matched: 35794  Changed: 2  Warnings: 0
 ```
 
-Also get rid of autosave files that are a security vulnerability:
+Now, for the fun part... apply this gigantic Git patch that I prepared
+manually, which implements an upgrade from a weird hybrid state of
+some files being in 2.0.13, some files being in 2.0.14, and some files
+being randomly hacked or broken in other ways, to a more or less
+consistent 2.0.19 release with all the merge conflicts resolved.
+
+Duct tape and superglue.
 
 ```
-% sudo rm /var/local/smf/**/*~
+% sudo -u www-data -g www-data bash
+www-data% cd /var/local/smf
+www-data% find . -name '*~' | xargs -d'\n' rm
+www-data% find . -type f | xargs -d'\n' chmod -x
+www-data% curl -fsSL https://github.com/dominionstrategy/infrastructure/raw/main/assets/20231115-smf-upgrade.patch | git apply
+www-data% curl -fsSL https://github.com/dominionstrategy/infrastructure/raw/main/assets/20231115-feature_gdpr.png -o Themes/default/images/admin/feature_gdpr.png
 ```
 
 Now the forum should be up and running. Install into `/etc/hosts` on
