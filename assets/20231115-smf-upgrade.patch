@@ -9927,7 +9927,7 @@ index a71a436..6323cbf 100644
  			break;
  
 diff --git a/Sources/Subs.php b/Sources/Subs.php
-index b8314dc..6cecb60 100644
+index b8314dc..827800c 100644
 --- a/Sources/Subs.php
 +++ b/Sources/Subs.php
 @@ -8,7 +8,7 @@
@@ -10299,7 +10299,7 @@ index b8314dc..6cecb60 100644
  			),
  			array(
  				'tag' => 'tr',
-@@ -1580,22 +1593,23 @@ function parse_bbc($message, $smileys = true, $cache_id = '', $parse_tags = arra
+@@ -1580,37 +1593,40 @@ function parse_bbc($message, $smileys = true, $cache_id = '', $parse_tags = arra
  			array(
  				'tag' => 'url',
  				'type' => 'unparsed_content',
@@ -10334,7 +10334,36 @@ index b8314dc..6cecb60 100644
  				'disallow_children' => array('email', 'ftp', 'url', 'iurl'),
  				'disabled_after' => ' ($1)',
  			),
-@@ -1877,7 +1891,7 @@ function parse_bbc($message, $smileys = true, $cache_id = '', $parse_tags = arra
+-			array(
+-				'tag' => 'youtube',
+-				'type' => 'unparsed_content',
+-				'content' => '<iframe style="border:0;" width="642" height="392" src="http://www.youtube.com/embed/$1" allowfullscreen></iframe>',
+-				'validate' => create_function('&$tag, &$data, $disabled', '
+-				if (isset($disabled[\'url\']))
+-					$tag[\'content\'] = \'http://www.youtube.com/watch?v=$1\';
+-				$pattern = \'~(?:http|https|)(?::\/\/|)(?:www.|)(?:youtu\.be\/|youtube\.com(?:\/embed\/|\/v\/|\/watch\?v=|\/ytscreeningroom\?v=|\/feeds\/api\/videos\/|\/user\S*[^\w\-\s]|\S*[^\w\-\s]))([\w\-]{11})[a-z0-9;:@?&%=+\/\$_.-]*~i\';
+-				if (preg_match($pattern, $data, $matches))
+-					$data = $matches[1];'),
+-				'disabled_content' => 'http://www.youtube.com/watch?v=$1',
+-			),
++                        array(
++                                'tag' => 'youtube',
++                                'type' => 'unparsed_content',
++                                'content' => '<iframe style="border:0;" width="642" height="392" src="http://www.youtube.com/embed/$1" allowfullscreen></iframe>',
++                                'validate' => function(&$tag, &$data, $disabled)
++                                {
++                                        if (isset($disabled['url']))
++                                                $tag['content'] = 'http://www.youtube.com/watch?v=$1';
++                                        $pattern = '~(?:http|https|)(?::\/\/|)(?:www.|)(?:youtu\.be\/|youtube\.com(?:\/embed\/|\/v\/|\/watch\?v=|\/ytscreeningroom\?v=|\/feeds\/api\/videos\/|\/user\S*[^\w\-\s]|\S*[^\w\-\s]))([\w\-]{11})[a-z0-9;:@?&%=+\/\$_.-]*~i';
++                                        if (preg_match($pattern, $data, $matches))
++                                                $data = $matches[1];
++                                },
++                                'disabled_content' => 'http://www.youtube.com/watch?v=$1',
++                        ),
+ 			array(
+ 				'tag' => 'white',
+ 				'before' => '<span style="color: white;" class="bbc_color">',
+@@ -1877,7 +1893,7 @@ function parse_bbc($message, $smileys = true, $cache_id = '', $parse_tags = arra
  					}
  
  					// Next, emails...
@@ -10343,7 +10372,7 @@ index b8314dc..6cecb60 100644
  					{
  						$data = preg_replace('~(?<=[\?\s' . $non_breaking_space . '\[\]()*\\\;>]|^)([\w\-\.]{1,80}@[\w\-]+\.[\w\-\.]+[\w\-])(?=[?,\s' . $non_breaking_space . '\[\]()*\\\]|$|<br />|&nbsp;|&gt;|&lt;|&quot;|&#039;|\.(?:\.|;|&nbsp;|\s|$|<br />))~' . ($context['utf8'] ? 'u' : ''), '[email]$1[/email]', $data);
  						$data = preg_replace('~(?<=<br />)([\w\-\.]{1,80}@[\w\-]+\.[\w\-\.]+[\w\-])(?=[?\.,;\s' . $non_breaking_space . '\[\]()*\\\]|$|<br />|&nbsp;|&gt;|&lt;|&quot;|&#039;)~' . ($context['utf8'] ? 'u' : ''), '[email]$1[/email]', $data);
-@@ -2551,23 +2565,6 @@ function parsesmileys(&$message)
+@@ -2551,23 +2567,6 @@ function parsesmileys(&$message)
  	$message = preg_replace_callback($smileyPregSearch, 'smileyPregReplaceCallback', $message);
  }
  
@@ -10367,7 +10396,7 @@ index b8314dc..6cecb60 100644
  // Our callback that does the actual smiley replacements.
  function smileyPregReplaceCallback($matches)
  {
-@@ -2606,7 +2603,9 @@ function highlight_php_code($code)
+@@ -2606,7 +2605,9 @@ function highlight_php_code($code)
  // Put this user in the online log.
  function writeLog($force = false)
  {
@@ -10378,7 +10407,7 @@ index b8314dc..6cecb60 100644
  
  	// If we are showing who is viewing a topic, let's see if we are, and force an update if so - to make it accurate.
  	if (!empty($settings['display_who_viewing']) && ($topic || $board))
-@@ -2798,7 +2797,7 @@ function redirectexit($setLocation = '', $refresh = false)
+@@ -2798,7 +2799,7 @@ function redirectexit($setLocation = '', $refresh = false)
  // Ends execution.  Takes care of template loading and remembering the previous URL.
  function obExit($header = null, $do_footer = null, $from_index = false, $from_fatal_error = false)
  {
@@ -10387,7 +10416,7 @@ index b8314dc..6cecb60 100644
  	static $header_done = false, $footer_done = false, $level = 0, $has_fatal_error = false;
  
  	// Attempt to prevent a recursive loop.
-@@ -2828,6 +2827,20 @@ function obExit($header = null, $do_footer = null, $from_index = false, $from_fa
+@@ -2828,6 +2829,20 @@ function obExit($header = null, $do_footer = null, $from_index = false, $from_fa
  
  		// Start up the session URL fixer.
  		ob_start('ob_sessrewrite');
@@ -10408,7 +10437,7 @@ index b8314dc..6cecb60 100644
  
  		if (!empty($settings['output_buffers']) && is_string($settings['output_buffers']))
  			$buffers = explode(',', $settings['output_buffers']);
-@@ -2879,7 +2892,8 @@ function obExit($header = null, $do_footer = null, $from_index = false, $from_fa
+@@ -2879,7 +2894,8 @@ function obExit($header = null, $do_footer = null, $from_index = false, $from_fa
  	}
  
  	// Remember this URL in case someone doesn't like sending HTTP_REFERER.
@@ -10418,7 +10447,7 @@ index b8314dc..6cecb60 100644
  		$_SESSION['old_url'] = $_SERVER['REQUEST_URL'];
  
  	// For session check verfication.... don't switch browsers...
-@@ -2969,7 +2983,9 @@ function logAction($action, $extra = array(), $log_type = 'moderate')
+@@ -2969,7 +2985,9 @@ function logAction($action, $extra = array(), $log_type = 'moderate')
  	}
  
  	// No point in doing anything else, if the log isn't even enabled.
@@ -10429,7 +10458,7 @@ index b8314dc..6cecb60 100644
  		return false;
  
  	if (isset($extra['member']) && !is_numeric($extra['member']))
-@@ -3218,7 +3234,7 @@ function determineTopicClass(&$topic_context)
+@@ -3218,7 +3236,7 @@ function determineTopicClass(&$topic_context)
  function setupThemeContext($forceload = false)
  {
  	global $modSettings, $user_info, $scripturl, $context, $settings, $options, $txt, $maintenance;
@@ -10438,7 +10467,7 @@ index b8314dc..6cecb60 100644
  	static $loaded = false;
  
  	// Under SSI this function can be called more then once.  That can cause some problems.
-@@ -3271,9 +3287,9 @@ function setupThemeContext($forceload = false)
+@@ -3271,9 +3289,9 @@ function setupThemeContext($forceload = false)
  		if ($user_info['avatar']['url'] == '' && !empty($user_info['avatar']['id_attach']))
  			$context['user']['avatar']['href'] = $user_info['avatar']['custom_dir'] ? $modSettings['custom_avatar_url'] . '/' . $user_info['avatar']['filename'] : $scripturl . '?action=dlattach;attach=' . $user_info['avatar']['id_attach'] . ';type=avatar';
  		// Full URL?
@@ -10450,7 +10479,7 @@ index b8314dc..6cecb60 100644
  
  			if ($modSettings['avatar_action_too_large'] == 'option_html_resize' || $modSettings['avatar_action_too_large'] == 'option_js_resize')
  			{
-@@ -3395,18 +3411,6 @@ function template_header()
+@@ -3395,18 +3413,6 @@ function template_header()
  	{
  		header('Expires: Mon, 26 Jul 1997 05:00:00 GMT');
  		header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
@@ -10469,7 +10498,7 @@ index b8314dc..6cecb60 100644
  	}
  
  	header('Content-Type: text/' . (isset($_REQUEST['xml']) ? 'xml' : 'html') . '; charset=' . (empty($context['character_set']) ? 'ISO-8859-1' : $context['character_set']));
-@@ -3490,7 +3494,7 @@ function template_header()
+@@ -3490,7 +3496,7 @@ function template_header()
  // Show the copyright...
  function theme_copyright($get_it = false)
  {
@@ -10478,7 +10507,7 @@ index b8314dc..6cecb60 100644
  
  	// Don't display copyright for things like SSI.
  	if (!isset($forum_version))
-@@ -3499,6 +3503,11 @@ function theme_copyright($get_it = false)
+@@ -3499,6 +3505,11 @@ function theme_copyright($get_it = false)
  	// Put in the version...
  	$forum_copyright = sprintf($forum_copyright, $forum_version);
  
@@ -10490,7 +10519,7 @@ index b8314dc..6cecb60 100644
  	echo '
  			<span class="smalltext" style="display: inline; visibility: visible; font-family: Verdana, Arial, sans-serif;">' . $forum_copyright . '
  			</span>';
-@@ -3816,6 +3825,10 @@ function text2words($text, $max_chars = 20, $encrypt = false)
+@@ -3816,6 +3827,10 @@ function text2words($text, $max_chars = 20, $encrypt = false)
  {
  	global $smcFunc, $context;
  
@@ -10501,7 +10530,7 @@ index b8314dc..6cecb60 100644
  	// Step 1: Remove entities/things we don't consider words:
  	$words = preg_replace('~(?:[\x0B\0' . ($context['utf8'] ? ($context['server']['complex_preg_chars'] ? '\x{A0}' : "\xC2\xA0") : '\xA0') . '\t\r\s\n(){}\\[\\]<>!@$%^*.,:+=`\~\?/\\\\]+|&(?:amp|lt|gt|quot);)+~' . ($context['utf8'] ? 'u' : ''), ' ', strtr($text, array('<br />' => ' ')));
  
-@@ -3836,7 +3849,7 @@ function text2words($text, $max_chars = 20, $encrypt = false)
+@@ -3836,7 +3851,7 @@ function text2words($text, $max_chars = 20, $encrypt = false)
  				$encrypted = substr(crypt($word, 'uk'), 2, $max_chars);
  				$total = 0;
  				for ($i = 0; $i < $max_chars; $i++)
@@ -10510,7 +10539,7 @@ index b8314dc..6cecb60 100644
  				$returned_ints[] = $max_chars == 4 ? min($total, 16777215) : $total;
  			}
  		}
-@@ -4203,7 +4216,8 @@ function setupMenuContext()
+@@ -4203,7 +4218,8 @@ function setupMenuContext()
  	elseif ($context['current_action'] == 'groups' && $context['allow_moderation_center'])
  		$current_action = 'moderate';
  
@@ -10520,7 +10549,7 @@ index b8314dc..6cecb60 100644
  
  	if (!$user_info['is_guest'] && $context['user']['unread_messages'] > 0 && isset($context['menu_buttons']['pm']))
  	{
-@@ -4220,7 +4234,7 @@ function smf_seed_generator()
+@@ -4220,7 +4236,7 @@ function smf_seed_generator()
  	// Never existed?
  	if (empty($modSettings['rand_seed']))
  	{
@@ -10529,7 +10558,7 @@ index b8314dc..6cecb60 100644
  		updateSettings(array('rand_seed' => $modSettings['rand_seed']));
  	}
  
-@@ -4380,6 +4394,30 @@ function fixchar__callback($matches)
+@@ -4380,6 +4396,30 @@ function fixchar__callback($matches)
  		return chr(($num >> 18) + 240) . chr((($num >> 12) & 63) + 128) . chr((($num >> 6) & 63) + 128) . chr(($num & 63) + 128);
  }
  
@@ -10560,7 +10589,7 @@ index b8314dc..6cecb60 100644
  // Strips out invalid html entities, replaces others with html style &#123; codes.
  function entity_fix__callback($matches)
  {
-@@ -4702,4 +4740,41 @@ function safe_unserialize($str)
+@@ -4702,4 +4742,41 @@ function safe_unserialize($str)
  
  	return $out;
  }

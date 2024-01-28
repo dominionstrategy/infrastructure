@@ -719,6 +719,8 @@ www-data% find . -name '*~' | xargs -d'\n' rm
 www-data% find . -type f | xargs -d'\n' chmod -x
 www-data% curl -fsSL https://github.com/dominionstrategy/infrastructure/raw/main/assets/20231115-smf-upgrade.patch | git apply
 www-data% curl -fsSL https://github.com/dominionstrategy/infrastructure/raw/main/assets/20231115-feature_gdpr.png -o Themes/default/images/admin/feature_gdpr.png
+www-data% php upgrade.php
+www-data% rm upgrade*.php
 ```
 
 Now the forum should be up and running. Install into `/etc/hosts` on
