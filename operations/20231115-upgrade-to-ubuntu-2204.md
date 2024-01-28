@@ -48,6 +48,11 @@ It was definitely an issue on their end, though - transfers in and out
 of both machines to residential internet were significantly slower
 than directly between them.
 
+Also, when doing this in production, make sure to file a support
+ticket for the new server to get SMTP ports unblocked, before
+attempting a migration. They are blocked by Linode by default. See
+<https://www.linode.com/docs/guides/running-a-mail-server/>.
+
 ### Account setup
 
 Connected via SSH and created an admin user to use instead of root:
@@ -171,11 +176,11 @@ the `php_fastcgi` directive but couldn't get it to work, it would
 always return a 502 error:
 
 ```
-https://forum.dominion.radian.codes:443 {
+http://forum.dominion.radian.codes:80 {
     reverse_proxy 127.0.0.1:8080
 }
 
-https://wiki.dominion.radian.codes:443 {
+http://wiki.dominion.radian.codes:80 {
     reverse_proxy 127.0.0.1:8080
 }
 ```
@@ -542,6 +547,28 @@ php update.php
 
 The update takes around 5-10 minutes in my testing.
 
+The wiki should now be working. Install into `/etc/hosts` on your
+client:
+
+```
+newmachine-ip wiki.dominionstrategy.com
+```
+
+(or equivalent if installing on a different hostname), and test in the
+browser. If all seems well, then update the DNS entry for
+`wiki.dominionstrategy` in production to point to the new server via A
+record. Then edit `/etc/caddy/Caddyfile` to:
+
+```
+https://wiki.dominion.radian.codes:443 {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+and `sudo systemctl restart caddy` so that TLS will get enabled and a
+certificate provisioned. Remove the `/etc/hosts` override. Migration
+is complete.
+
 ## Critical window: migrate forum
 
 This section covers restoring the db over to the new server. We have
@@ -693,7 +720,27 @@ Also get rid of autosave files that are a security vulnerability:
 % sudo rm /var/local/smf/**/*~
 ```
 
-Now the forum should be up and running.
+Now the forum should be up and running. Install into `/etc/hosts` on
+your client:
+
+```
+newmachine-ip forum.dominionstrategy.com
+```
+
+(or equivalent if installing on a different hostname), and test in the
+browser. If all seems well, then update the DNS entry for
+`forum.dominionstrategy` in production to point to the new server via
+A record. Then edit `/etc/caddy/Caddyfile` to:
+
+```
+https://forum.dominion.radian.codes:443 {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+and `sudo systemctl restart caddy` so that TLS will get enabled and a
+certificate provisioned. Remove the `/etc/hosts` override. Migration
+is complete.
 
 ## Troubleshooting info
 
@@ -728,13 +775,3 @@ Restart sshd, then use from the old server:
 ```
 % scp -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null admin@newmachine-ip:...
 ```
-
-## FIXMEs
-
-* Forum todo...
-* Forum needs to be put into read-only mode (or a banner added at
-  least)
-* Need to figure out TLS cutover
-* DNS settings
-* SMTP support ticket
-  <https://www.linode.com/docs/guides/running-a-mail-server/>
