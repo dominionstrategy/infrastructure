@@ -9927,7 +9927,7 @@ index a71a436..6323cbf 100644
  			break;
  
 diff --git a/Sources/Subs.php b/Sources/Subs.php
-index b8314dc..827800c 100644
+index b8314dc..fe01136 100644
 --- a/Sources/Subs.php
 +++ b/Sources/Subs.php
 @@ -8,7 +8,7 @@
@@ -10349,16 +10349,16 @@ index b8314dc..827800c 100644
 +                        array(
 +                                'tag' => 'youtube',
 +                                'type' => 'unparsed_content',
-+                                'content' => '<iframe style="border:0;" width="642" height="392" src="http://www.youtube.com/embed/$1" allowfullscreen></iframe>',
++                                'content' => '<iframe style="border:0;" width="642" height="392" src="https://www.youtube.com/embed/$1" allowfullscreen></iframe>',
 +                                'validate' => function(&$tag, &$data, $disabled)
 +                                {
 +                                        if (isset($disabled['url']))
-+                                                $tag['content'] = 'http://www.youtube.com/watch?v=$1';
++                                                $tag['content'] = 'https://www.youtube.com/watch?v=$1';
 +                                        $pattern = '~(?:http|https|)(?::\/\/|)(?:www.|)(?:youtu\.be\/|youtube\.com(?:\/embed\/|\/v\/|\/watch\?v=|\/ytscreeningroom\?v=|\/feeds\/api\/videos\/|\/user\S*[^\w\-\s]|\S*[^\w\-\s]))([\w\-]{11})[a-z0-9;:@?&%=+\/\$_.-]*~i';
 +                                        if (preg_match($pattern, $data, $matches))
 +                                                $data = $matches[1];
 +                                },
-+                                'disabled_content' => 'http://www.youtube.com/watch?v=$1',
++                                'disabled_content' => 'https://www.youtube.com/watch?v=$1',
 +                        ),
  			array(
  				'tag' => 'white',
