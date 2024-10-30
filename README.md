@@ -1,9 +1,7 @@
 # DominionStrategy Infrastructure
 
-Documentation, historical context, and operational guides for the
-Dominion Strategy forum and wiki, hosted at
-<https://forum.dominionstrategy.com/> and
-<https://wiki.dominionstrategy.com/> respectively.
+This content has largely been moved to <https://wiki.dominionstrategy.com/index.php/Category:Server_Operations>
+although the repository here can still be used to host assets if need be.
 
 Discussion is on the [Dominion Strategy Discord
 server](https://wiki.dominionstrategy.com/index.php/Dominion_(Card_Game)_Discord_Server),
